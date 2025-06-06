@@ -17,8 +17,6 @@ async def clear_welcome():
             await clear_user_wlcm(user_id)
 
 
-from datetime import datetime
-from pytz import timezone
 
 async def expired_user():
     now = datetime.now(timezone("Asia/Jakarta"))
@@ -68,7 +66,7 @@ async def loadPlugins():
 
 async def main():
     await bot.start()
-    LOGGER("Info").info("✅ Bot Active")
+    LOGGER("Info").info(f"✅ Bot Active | {bot.me.username}")
     asyncio.gather(auto_reset())
     await asyncio.gather(loadPlugins(), idle())
 
