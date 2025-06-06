@@ -6,7 +6,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from .mustjoin import subcribe
 
 @bot.on_message(filters.command("start") & filters.private)
-# @subcribe
+@subcribe
 async def start(client, message):
     await add_served_user(message.from_user.id)
     checkprem = await get_prem()
