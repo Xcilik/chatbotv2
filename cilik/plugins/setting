@@ -1,0 +1,833 @@
+from asyncio import sleep
+
+from pyrogram.enums import ChatType, ParseMode
+from pyrogram import filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from pyromod.exceptions import ListenerStopped as meki
+from cilik import bot
+from cilik.database import *
+
+
+@bot.on_callback_query(filters.regex("cb_alert_satu|cb_alert_dua"))
+async def cb_alert(client, callback_query):
+    query = callback_query.data.split()
+    if query[0] == "cb_alert_dua":
+        await callback_query.answer("🔠 Kata kunci", show_alert=True)
+        
+    elif query[0] == "cb_alert_satu":
+        await callback_query.answer("🗑️ Hapus", show_alert=True)
+        
+
+
+
+@bot.on_callback_query(filters.regex("setting"))
+async def setting(client, callback_query):
+    text = """
+📝 **Fitur yang tersedia:**
+
+• **Filter** - Balasan otomatis sesuai kata kunci
+• **Notes** - Mengirim catatan sesuai kata kunci
+• **Welcome** - Pesan sambutan
+
+👉 Silahkan pilih apa yang anda mau atur/setting!
+"""
+    button_setting = [
+        [
+            InlineKeyboardButton("Filter", callback_data="cb_set_filter"),
+            InlineKeyboardButton("Notes", callback_data="cb_set_notes"),                
+        ],          
+        [
+            InlineKeyboardButton("Welcome", callback_data="cb_set_welcome"),                 
+        ],                           
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="start_back"),          
+              
+        ],                  
+    ]
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(button_setting))  
+
+
+#filter
+@bot.on_callback_query(filters.regex("cb_set_filter"))
+async def cb_set_filter(client, callback_query):
+    user_id = callback_query.from_user.id    
+    await client.stop_listening(chat_id=user_id, user_id=user_id)
+    template = await all_filter(user_id)
+    if not template:
+        text = "🤷 Kamu belum memiliki Kata kunci **Filter**, silahkan buat!"
+        buttons = [
+            [
+                InlineKeyboardButton("➕ Buat kata kunci Filter", callback_data="cb_tambah_filter"),          
+            ],          
+            [
+                InlineKeyboardButton("🔙 Kembali", callback_data="cb_setting_all"),             
+            ]  
+        ]
+        return await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+    text = "**🧑‍💻 Daftar Kata kunci Filter**"
+    new_keyboard = [    
+        [
+            InlineKeyboardButton("📝", callback_data="cb_alert_dua"),
+            InlineKeyboardButton("🗑️", callback_data="cb_alert_satu"),                 
+        ], 
+    ]
+    for kata_kunci in template:
+            
+        key = [InlineKeyboardButton(f"{kata_kunci}", callback_data=f"atur_kata_kunci {kata_kunci}"), InlineKeyboardButton("Hapus", callback_data=f"cb_hapus_filter {kata_kunci}")]
+        new_keyboard.append(key)
+
+    new_keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="➕ Tambah kata kunci Filter",
+                callback_data="cb_tambah_filter",
+            )
+        ]
+    )
+    new_keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="🔙 Kembali",
+                callback_data="cb_setting_all",
+            )
+        ]
+    )
+    
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(new_keyboard))
+
+
+@bot.on_callback_query(filters.regex("cbtambahfilter"))
+async def cb_tambah_filter(client, callback_query):
+    user_id = callback_query.from_user.id
+    text = """
+➕ **Tambah kata kunci**
+
+👉🏻 Kirim satu kata kunci yang ingin Anda atur untuk mendapatkan **filter** balasan otomatis.
+"""
+    buttons = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_filter"),          
+        ]        
+    ]    
+    buttons_batal = [
+        [
+            InlineKeyboardButton("❌ Batalkan", callback_data="cb_set_filter"),          
+        ]        
+    ]  
+     
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons_batal))
+    try:
+        s_text = await client.listen(chat_id=user_id, user_id=user_id)
+    except meki:
+        return
+    if s_text.text:
+        textlanjut = f"""
+🔠 Kata kunci `{s_text.text}` berhasil dibuat
+
+👉 __Silahkan atur.__
+"""
+        button_lanjut = [
+            [
+                InlineKeyboardButton("📨 Pesan", callback_data=f"cbaddpesanfilter {s_text.text}"),
+                InlineKeyboardButton("👀 Lihat", callback_data=f"cbaddlihatfilter {s_text.text}"),
+          
+            ],       
+                InlineKeyboardButton("🗑️ Hapus", callback_data=f"cbrmpesanfilter {s_text.text}"),                
+            [
+                InlineKeyboardButton("🔙 Kembali", callback_data="cbsetfilter"),          
+          
+            ],          
+        
+        ]            
+        await client.send_message(user_id, textlanjut, reply_markup=InlineKeyboardMarkup(button_lanjut), reply_to_message_id=s_text.id)
+    else:
+        await client.send_message(user_id, f"😤 Kata kunci tidak valid!", reply_markup=InlineKeyboardMarkup(buttons))
+
+
+@bot.on_callback_query(filters.regex("cb_hapus_filter"))
+async def cb_hapus_filter(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    filter_id = query[1]
+    await rm_filter(user_id, filter_id)
+    text = f"🚮 Kata kunci **Filter** `{filter_id}` berhasil dihapus"
+    buttons = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_filter"),          
+        ]        
+    ]
+    
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))    
+
+
+
+@bot.on_callback_query(filters.regex("cbaddpesanfilter"))
+async def cb_media(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()    
+    text = """
+**Kirim Pesan atau Media Sekarang**
+__Format berikut dapat ditambahkan dalam teks dan akan digantikan dengan data pengguna:__
+
+• `{first}`: Nama depan pengguna.
+• `{last}`: Nama belakang pengguna.
+• `{fullname}`: Nama lengkap pengguna.
+• `{username}`: Nama pengguna pengguna. Jika tidak tersedia, mention pengguna.
+• `{mention}`: Mention pengguna dengan nama depannya.
+• `{id}`: ID pengguna.
+• `{chatname}`: Nama obrolan.
+• `{date}`: Tanggal.
+• `{time}`: Waktu
+
+Pesan bisa berupa Text, Media, atau Media dengan caption.
+
+__Jenis media yang diizinkan: foto, video, berkas, stiker, GIF, audio, pesan suara, video bulat.__
+"""
+    button_edit = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data=f"atur_kata_kunci {query[1]}")    
+          
+        ],          
+        
+    ]   
+    button_ask = [
+        [
+            InlineKeyboardButton("🗑️ Hapus media", callback_data=f"cb_remove_media_filter {query[1]}"),          
+        ],       
+        [
+            InlineKeyboardButton("❌ Batalkan", callback_data=f"atur_kata_kunci {query[1]}")
+            
+        ]
+    ]                
+    await callback_query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(button_ask))
+    try:
+        p_media = await client.listen(chat_id=user_id, user_id=user_id)
+    except meki:
+        return
+    if p_media.text:
+        await add_media_filter(user_id, query[1], p_media.text.markdown)
+    elif p_media.photo:
+        await add_media_filter(user_id, query[1], p_media.photo.file_id)
+    elif p_media.video:
+        await add_media_filter(user_id, query[1], p_media.video.file_id)
+    elif p_media.audio:
+        await add_media_filter(user_id, query[1], p_media.audio.file_id)
+    elif p_media.voice:
+        await add_media_filter(user_id, query[1], p_media.voice.file_id)    
+    elif p_media.sticker:
+        await add_media_filter(user_id, query[1], p_media.sticker.file_id)   
+    elif p_media.animation:
+        await add_media_filter(user_id, query[1], p_media.animation.file_id)        
+    else:
+        return await client.send_message(user_id, "⚠️ __Media tidak valid!__", reply_markup=InlineKeyboardMarkup (button_edit), reply_to_message_id=p_media.id)
+        
+    if p_media.caption:
+        await add_text_filter(user_id, query[1], p_media.caption.markdown)
+
+        
+    await client.send_message(callback_query.from_user.id, f"✅ Media berhasil diset untuk kata kunci **Filter** `{query [1]}`!", reply_markup=InlineKeyboardMarkup (button_edit), reply_to_message_id=p_media.id)
+    
+
+
+@bot.on_callback_query(filters.regex("atur_kata_kunci"))
+async def atur_kata_kunci(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    await client.stop_listening(chat_id=user_id, user_id=user_id)
+    db_text= await get_text_filter(user_id, query[1])
+    db_media= await get_media_filter(user_id, query[1])
+    
+    p_text = "✅" if db_text else "❌"
+    p_media = "✅" if db_media else "❌"
+
+    text = f"""
+🔤 Kata Kunci Filter: `{query[1]}`
+
+📄 Text {p_text}
+📸 Media {p_media}
+
+👉🏻 Gunakan tombol di bawah untuk memilih apa yang ingin anda tambahkan
+"""
+    button_edit = [
+        [
+            InlineKeyboardButton("📄 Text", callback_data=f"cb_add_text_filter {query[1]}"),
+            InlineKeyboardButton("📸 Media", callback_data=f"cb_add_media_filter {query[1]}"),
+          
+        ],          
+        [
+            InlineKeyboardButton("👀 Lihat", callback_data=f"cb_see_text_media {query[1]}"),          
+        ],             
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_filter"),          
+          
+        ],          
+        
+    ]
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(button_edit))    
+
+
+@bot.on_callback_query(filters.regex("cb_remove_text_filter|cb_remove_media_filter"))
+async def cb_remove_text_media_filter(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    button_edit = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data=f"atur_kata_kunci {query[1]}"),
+        ],          
+        
+    ]
+    
+    if query[0] == "cb_remove_text_filter":
+        await rm_text_filter(user_id, query[1])
+        text = f"🚮 **Sukses menghapus Text untuk kata kunci Filter** `{query[1]}`."
+    elif query[0] == "cb_remove_media_filter":      
+        await rm_media_filter(user_id, query[1])
+        text = f"🚮 **Sukses menghapus Media untuk kata kunci Filter** `{query[1]}`."
+        
+    await callback_query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(button_edit))
+
+
+
+
+@bot.on_callback_query(filters.regex("cb_see_text_media"))
+async def see_(client, callback_query):
+    await callback_query.message.delete()
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    ya = await client.send_message(user_id, "👀")
+    db_text= await get_text_filter(user_id, query[1])
+    db_media= await get_media_filter(user_id, query[1])
+    await sleep(1)
+    await ya.delete()
+    if db_text and not db_media:
+        await client.send_message(user_id, db_text)
+    elif db_text and db_media:
+        await client.send_cached_media(user_id, db_media, caption=db_text)
+    elif db_media and not db_text:
+        await client.send_cached_media(user_id, db_media)
+    else:
+        await callback_query.answer(f"🤷‍♂ Tidak ada Text atau Media pada kata kunci Filter {query[1]}", show_alert=True)
+        
+    p_text = "✅" if db_text else "❌"
+    p_media = "✅" if db_media else "❌"
+
+    text = f"""
+🔤 Kata Kunci Filter: `{query[1]}`
+
+📄 Text {p_text}
+📸 Media {p_media}
+
+👉🏻 Gunakan tombol di bawah untuk memilih apa yang ingin anda tambahkan
+"""
+    button_edit = [
+        [
+            InlineKeyboardButton("📄 Text", callback_data=f"cb_add_text_filter {query[1]}"),
+            InlineKeyboardButton("📸 Media", callback_data=f"cb_add_media_filter {query[1]}"),
+          
+        ],          
+        [
+            InlineKeyboardButton("👀 Lihat", callback_data=f"cb_see_text_media {query[1]}"),          
+        ],             
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_filter"),          
+          
+        ],          
+        
+    ]        
+    await sleep(2)
+    await client.send_message(user_id, text, reply_markup=InlineKeyboardMarkup(button_edit))
+
+#setting welcome
+@bot.on_callback_query(filters.regex("cb_set_welcome"))
+async def cb_set_welcome(client, callback_query):
+    user_id = callback_query.from_user.id  
+    await client.stop_listening(chat_id=user_id, user_id=user_id)
+    status = await info_wlcm(user_id)
+    if status == "on":
+        statustext = "On ✅"
+    else:
+        statustext = "Off ❌"
+        
+    text_db = await get_wlcm_text(user_id)
+    if not text_db:
+        text = f"**Status:** {statustext}\n\n**Text Welcome:**\n" + "`Welcome {mention} 👋🏻\n\nHow are you today?, Hope everything will be fine.`"
+    else:
+        text = f"**Status:** {statustext}\n\n**Text Welcome:**\n" + f"`{text_db}`"
+        
+    buttons = [
+        [
+            InlineKeyboardButton("🚦 On/Off", callback_data="cb_status_welcometext"),          
+        ],                
+        [
+            InlineKeyboardButton("↪️ Set ke Default", callback_data="cb_default_welcometext"),                            
+            InlineKeyboardButton("✏️ Set Welcome text", callback_data="cb_tambah_welcometext"),          
+        ],          
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_setting_all"),             
+        ]  
+    ]
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+
+    
+@bot.on_callback_query(filters.regex("cb_tambah_welcometext|cb_default_welcometext"))
+async def cb_tambah_wlcmtext(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    if query[0] == "cb_tambah_welcometext":    
+        text = """
+👉 Silahkan kirimkan Text Welcome.
+
+
+<b><u>Markdown Formatting</u></b>
+Anda dapat memformat pesan Anda menggunakan huruf <b>tebal</b>, <i>miring</i>, <u>garis bawah</u>, dan banyak lagi.  Silakan bereksperimen!
+
+<b>Supported Markdown:</b>
+- <code>__miring__</code>: Garis bawah ganda akan menghasilkan teks miring.
+- <code>**tebal**</code>: Tanda bintang ganda akan menghasilkan teks tebal.
+- <code>`code`</code>: Backticks akan menghasilkan teks monospace.
+- <code>~~strike~~</code>: Tanda gelombang ganda akan menghasilkan <s>teks yang dicoret</s>.
+- <code>--underline--</code>: Double Hyphen akan menghasilkan teks yang <u>bergaris bawah</u>.
+- <code>||spoiler||</code>: Pipa ganda akan menghasilkan teks <spoiler>spoiler</spoiler>.
+
+<b>Format User:</b>
+- <code>{name}</code> - menampilkan nama user
+- <code>{mention}</code> - menampilkan mention user
+- <code>{id}</code> - menampilkan id user
+- <code>{username}</code> - menampilkan username user
+
+<b>Format Foto:</b>
+[QRIS](link telegraph)
+"""
+        buttons = [  
+            [
+                InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_welcometext"),          
+            ]         
+        ]    
+        buttons_batal = [      
+            [            
+                InlineKeyboardButton("❌ Batalkan", callback_data="cb_set_welcometext"),          
+            ]        
+        ]             
+        await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons_batal), parse_mode=ParseMode.HTML)
+        try:
+            s_text = await client.listen(chat_id=user_id, user_id=user_id)
+        except meki:
+            return
+            
+        if s_text.text:
+            await add_wlcm_text(user_id, s_text.text.markdown)
+            await client.send_message(user_id, "✅ **Text Welcome** berhasil diset!", reply_markup=InlineKeyboardMarkup(buttons))            
+        else:
+            await client.send_message(user_id, "😤 Format Text tidak valid!", reply_markup=InlineKeyboardMarkup(buttons_batal))
+            
+    elif query[0] == "cb_default_welcometext":
+        text = "↪️ **Text Welcome** berhasil di set ke Default"
+        buttons = [  
+            [
+                InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_welcometext"),          
+            ]         
+        ]  
+        ada = await get_wlcm_text(user_id)
+        if ada:
+            await rm_wlcm_text(user_id)
+            await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+        else:
+            await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+
+@bot.on_callback_query(filters.regex("cb_status_welcometext"))
+async def cb_status_welcometext(client, callback_query):
+    text = f"""
+✅ = Hidupkan
+❌ = Matikan
+"""
+    buttons = [
+        [
+            InlineKeyboardButton("✅", callback_data="wlcm_true"),
+            InlineKeyboardButton("❌", callback_data="wlcm_false"),            
+        ],             
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_welcome"),          
+        ]        
+    ]    
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+
+
+@bot.on_callback_query(filters.regex("wlcm_true|wlcm_false"))
+async def wlcm_true_false(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()  
+
+    buttons = [
+        [
+            InlineKeyboardButton("🚦 On/Off", callback_data="cb_status_welcometext"),          
+        ],                
+        [
+            InlineKeyboardButton("↪️ Set ke Default", callback_data="cb_default_welcometext"),                            
+            InlineKeyboardButton("✏️ Set Welcome text", callback_data="cb_tambah_welcometext"),          
+        ],          
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_setting_all"),             
+        ]  
+    ]
+
+    
+    if query[0] == "wlcm_true":
+        await set_wlcm(user_id, "on")
+        text = f"""
+✅ Welcome berhasil dihidupkan
+"""
+        statustext = "On ✅"  
+        text_db = await get_wlcm_text(user_id)
+        if not text_db:
+            textawal = f"**Status:** {statustext}\n\n**Text Welcome:**\n" + "`Welcome {mention} 👋🏻\n\nHow are you today?, Hope everything will be fine.`"
+        else:
+            textawal = f"**Status:** {statustext}\n\n**Text Welcome:**\n" + f"`{text_db}`"
+        
+    elif query[0] == "wlcm_false":
+        await set_wlcm(user_id, "off")
+        text = f"""
+❌ Welcome berhasil dimatikan
+"""        
+        statustext = "Off ❌"  
+        text_db = await get_wlcm_text(user_id)
+        if not text_db:
+            textawal = f"**Status:** {statustext}\n\n**Text Welcome:**\n" + "`Welcome {mention} 👋🏻\n\nHow are you today?, Hope everything will be fine.`"
+        else:
+            textawal = f"**Status:** {statustext}\n\n**Text Welcome:**\n" + f"`{text_db}`"
+                
+    await callback_query.answer(text)        
+    await callback_query.edit_message_text(textawal, reply_markup=InlineKeyboardMarkup(buttons))
+
+
+
+
+#notes
+
+@bot.on_callback_query(filters.regex("cb_set_notes"))
+async def cb_set_notes(client, callback_query):
+    user_id = callback_query.from_user.id    
+    await client.stop_listening(chat_id=user_id, user_id=user_id)
+    template = await all_notes(user_id)
+    if not template:
+        text = "🤷 Kamu belum memiliki Kata kunci **Notes**, silahkan buat!"
+        buttons = [
+            [
+                InlineKeyboardButton("➕ Buat kata kunci Notes", callback_data="tcbtambahnotes"),          
+            ],          
+            [
+                InlineKeyboardButton("🔙 Kembali", callback_data="cb_setting_all"),             
+            ]  
+        ]
+        return await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))
+    text = "**🧑‍💻 Daftar Kata kunci Notes**\n\nGunakan `/get kata_kunci`"
+    new_keyboard = [    
+        [
+            InlineKeyboardButton("📝", callback_data="cb_alert_dua"),
+            InlineKeyboardButton("🗑️", callback_data="cb_alert_satu"),                 
+        ], 
+    ]
+    for kata_kunci in template:
+            
+        key = [InlineKeyboardButton(f"{kata_kunci}", callback_data=f"haturkatakuncinotes {kata_kunci}"), InlineKeyboardButton("Hapus", callback_data=f"hcbhapusnotes {kata_kunci}")]
+        new_keyboard.append(key)
+
+    new_keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="➕ Tambah kata kunci Notes",
+                callback_data="tcbtambahnotes",
+            )
+        ]
+    )
+    new_keyboard.append(
+        [
+            InlineKeyboardButton(
+                text="🔙 Kembali",
+                callback_data="cb_setting_all",
+            )
+        ]
+    )
+    
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(new_keyboard))
+
+
+@bot.on_callback_query(filters.regex("tcbtambahnotes"))
+async def cb_tambah_notes(client, callback_query):
+    user_id = callback_query.from_user.id
+    text = """
+👉 Silahkan kirimkan kata kunci **Notes**
+"""
+    buttons = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_notes"),          
+        ]        
+    ]    
+    buttons_batal = [
+        [
+            InlineKeyboardButton("❌ Batalkan", callback_data="cb_set_notes"),          
+        ]        
+    ]  
+     
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons_batal))
+    try:
+        s_text = await client.listen(chat_id=user_id, user_id=user_id)
+    except meki:
+        return
+    if s_text.text:
+        if await get_notes(user_id, s_text.text):
+            await client.send_message(user_id, f"👀 Kata kunci **Notes** `{s_text.text}` sudah ada di daftar Kata kunci Notes", reply_markup=InlineKeyboardMarkup(buttons))
+        else:
+            await add_notes(user_id, s_text.text, "None")
+            db_text= await get_text_notes(user_id, s_text.text)
+            db_media= await get_media_notes(user_id, s_text.text)
+    
+            p_text = "✅" if db_text else "❌"
+            p_media = "✅" if db_media else "❌"
+
+            textlanjut = f"""
+✅ Kata kunci **Notes** `{s_text.text}` berhasil ditambahkan
+
+📄 Text {p_text}
+📸 Media {p_media}
+
+👉🏻 Gunakan tombol di bawah untuk memilih apa yang ingin anda tambahkan
+"""
+            button_lanjut = [
+                [
+                    InlineKeyboardButton("📄 Text", callback_data=f"ncbaddtextnotes {s_text.text}"),
+                    InlineKeyboardButton("📸 Media", callback_data=f"ncbaddmedianotes {s_text.text}"),
+          
+                ],          
+                [
+                    InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_notes"),          
+          
+                ],          
+        
+            ]            
+            await client.send_message(user_id, textlanjut, reply_markup=InlineKeyboardMarkup(button_lanjut), reply_to_message_id=s_text.id)
+    else:
+        await client.send_message(user_id, f"😤 Kata kunci **Notes** tidak valid!", reply_markup=InlineKeyboardMarkup(buttons))
+
+
+@bot.on_callback_query(filters.regex("hcbhapusnotes"))
+async def cb_hapus_notes(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    filter_id = query[1]
+    await rm_notes(user_id, filter_id)
+    text = f"🚮 Kata kunci **Notes** `{filter_id}` berhasil dihapus"
+    buttons = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_notes"),          
+        ]        
+    ]
+    
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons))    
+
+
+
+@bot.on_callback_query(filters.regex("ncbaddtextnotes"))
+async def cb_text_notes(client, callback_query):    
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    text = f"""
+👉 Sekarang kirimkan pesan yang ingin Anda atur untuk kata kunci <b>Notes</b> <code>{query[1]}</code>.
+
+<b><u>Markdown Formatting</u></b>
+Anda dapat memformat pesan Anda menggunakan huruf <b>tebal</b>, <i>miring</i>, <u>garis bawah</u>, dan banyak lagi.  Silakan bereksperimen!
+
+<b>Supported Markdown:</b>
+ - <code>__miring__</code>: Garis bawah ganda akan menghasilkan teks miring.
+ - <code>**tebal**</code>: Tanda bintang ganda akan menghasilkan teks tebal.
+ - <code>`code`</code>: Backticks akan menghasilkan teks monospace.
+ - <code>~~strike~~</code>: Tanda gelombang ganda akan menghasilkan <s>teks yang dicoret</s>.
+ - <code>--underline--</code>: Double Hyphen akan menghasilkan teks yang <u>bergaris bawah</u>.
+ - <code>||spoiler||</code>: Pipa ganda akan menghasilkan teks <spoiler>spoiler</spoiler>.
+ """
+    button_edit = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data=f"haturkatakuncinotes {query[1]}")    
+          
+        ],          
+        
+    ]        
+    button_ask = [
+        [
+            InlineKeyboardButton("🗑️ Hapus Text", callback_data=f"xcbremovetextnotes {query[1]}"),          
+        ],          
+        [
+            InlineKeyboardButton("❌ Batalkan", callback_data=f"haturkatakuncinotes {query[1]}")            
+        ]
+    ]            
+    await callback_query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(button_ask), parse_mode=ParseMode.HTML)
+
+    try:
+        s_text = await client.listen(chat_id=user_id, user_id=user_id)
+    except meki:
+        return
+    if s_text.text:
+        await add_text_notes(user_id, query[1], s_text.text.markdown)
+        await client.send_message(user_id, f"✅ Text untuk kata kunci **Notes** `{query[1]}` berhasil di set!", reply_markup=InlineKeyboardMarkup(button_edit), reply_to_message_id=s_text.id)
+    else:
+        await client.send_message(user_id, "⚠️ __Format Text tidak benar__", reply_markup=InlineKeyboardMarkup(button_edit), reply_to_message_id=s_text.id)
+    
+
+@bot.on_callback_query(filters.regex("ncbaddmedianotes"))
+async def cb_media_notes(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()    
+    text = f"""
+👉🏻 Sekarang kirimkan media (foto/video/audio/voice/sticker/gif) untuk kata kunci **Notes** `{query[1]}`.
+"""
+    button_edit = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data=f"haturkatakuncinotes {query[1]}")    
+          
+        ],          
+        
+    ]   
+    button_ask = [
+        [
+            InlineKeyboardButton("🗑️ Hapus media", callback_data=f"xcbremovemedianotes {query[1]}"),          
+        ],       
+        [
+            InlineKeyboardButton("❌ Batalkan", callback_data=f"haturkatakuncinotes {query[1]}")
+            
+        ]
+    ]                
+    await callback_query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(button_ask))
+    try:
+        p_media = await client.listen(chat_id=user_id, user_id=user_id)
+    except meki:
+        return
+    
+    if p_media.photo:
+        await add_media_notes(user_id, query[1], p_media.photo.file_id)
+    elif p_media.video:
+        await add_media_notes(user_id, query[1], p_media.video.file_id)
+    elif p_media.audio:
+        await add_media_notes(user_id, query[1], p_media.audio.file_id)
+    elif p_media.voice:
+        await add_media_notes(user_id, query[1], p_media.voice.file_id)    
+    elif p_media.sticker:
+        await add_media_notes(user_id, query[1], p_media.sticker.file_id)   
+    elif p_media.animation:
+        await add_media_notes(user_id, query[1], p_media.animation.file_id)        
+    else:
+        return await client.send_message(user_id, "⚠️ __Media tidak valid!__", reply_markup=InlineKeyboardMarkup (button_edit), reply_to_message_id=p_media.id)
+
+    await client.send_message(callback_query.from_user.id, f"✅ Media berhasil diset untuk kata kunci **Notes** `{query [1]}`!", reply_markup=InlineKeyboardMarkup (button_edit), reply_to_message_id=p_media.id)
+    
+
+
+@bot.on_callback_query(filters.regex("haturkatakuncinotes"))
+async def hatur_kata_kunci_notes(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    await client.stop_listening(chat_id=user_id, user_id=user_id)
+    db_text= await get_text_notes(user_id, query[1])
+    db_media= await get_media_notes(user_id, query[1])
+    
+    p_text = "✅" if db_text else "❌"
+    p_media = "✅" if db_media else "❌"
+
+    text = f"""
+🔤 Kata Kunci Notes: `{query[1]}`
+
+📄 Text {p_text}
+📸 Media {p_media}
+
+👉🏻 Gunakan tombol di bawah untuk memilih apa yang ingin anda tambahkan
+"""
+    button_edit = [
+        [
+            InlineKeyboardButton("📄 Text", callback_data=f"ncbaddtextnotes {query[1]}"),
+            InlineKeyboardButton("📸 Media", callback_data=f"ncbaddmedianotes {query[1]}"),
+          
+        ],          
+        [
+            InlineKeyboardButton("👀 Lihat", callback_data=f"cebeseetextmedianotes {query[1]}"),          
+        ],             
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_notes"),          
+          
+        ],          
+        
+    ]
+    await callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(button_edit))    
+
+
+@bot.on_callback_query(filters.regex("xcbremovetextnotes|xcbremovemedianotes"))
+async def xcb_remove_text_media_notes(client, callback_query):
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    button_edit = [
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data=f"haturkatakuncinotes {query[1]}"),
+        ],          
+        
+    ]
+    
+    if query[0] == "xcbremovetextnotes":
+        await rm_text_notes(user_id, query[1])
+        text = f"🚮 **Sukses menghapus Text untuk kata kunci Notes** `{query[1]}`."
+    elif query[0] == "xcbremovemedianotes":      
+        await rm_media_notes(user_id, query[1])
+        text = f"🚮 **Sukses menghapus Media untuk kata kunci Notes** `{query[1]}`."
+        
+    await callback_query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(button_edit))
+
+
+
+
+@bot.on_callback_query(filters.regex("cebeseetextmedianotes"))
+async def see_notes(client, callback_query):
+    await callback_query.message.delete()
+    user_id = callback_query.from_user.id
+    query = callback_query.data.split()
+    ya = await client.send_message(user_id, "👀")
+    db_text= await get_text_notes(user_id, query[1])
+    db_media= await get_media_notes(user_id, query[1])
+    await sleep(1)
+    await ya.delete()
+    if db_text and not db_media:
+        await client.send_message(user_id, db_text)
+    elif db_text and db_media:
+        await client.send_cached_media(user_id, db_media, caption=db_text)
+    elif db_media and not db_text:
+        await client.send_cached_media(user_id, db_media)
+    else:
+        await callback_query.answer(f"🤷‍♂ Tidak ada Text atau Media pada kata kunci Notes {query[1]}", show_alert=True)
+    
+    p_text = "✅" if db_text else "❌"
+    p_media = "✅" if db_media else "❌"
+
+    text = f"""
+🔤 Kata Kunci Notes: `{query[1]}`
+
+📄 Text {p_text}
+📸 Media {p_media}
+
+👉🏻 Gunakan tombol di bawah untuk memilih apa yang ingin anda tambahkan
+"""
+    button_edit = [
+        [
+            InlineKeyboardButton("📄 Text", callback_data=f"ncbaddtextnotes {query[1]}"),
+            InlineKeyboardButton("📸 Media", callback_data=f"ncbaddmedianotes {query[1]}"),
+          
+        ],          
+        [
+            InlineKeyboardButton("👀 Lihat", callback_data=f"cebeseetextmedianotes {query[1]}"),          
+        ],             
+        [
+            InlineKeyboardButton("🔙 Kembali", callback_data="cb_set_notes"),          
+          
+        ],          
+        
+    ]        
+    await sleep(2)
+    await client.send_message(user_id, text, reply_markup=InlineKeyboardMarkup(button_edit))
+    
