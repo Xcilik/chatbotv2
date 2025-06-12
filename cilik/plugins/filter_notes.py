@@ -20,8 +20,8 @@ def format_text(template, user, target):
         mename=f"{user.first_name} {user.last_name or ''}".strip(),
         memention=user.mention,
         name=f"{target.first_name} {target.last_name or ''}".strip(),
-        username=f"@{target.username}" if target.username else target.mention,
-        mention=target.mention,
+        username=f"@{target.username}" if target.username else f"<a href=tg://openmessage?user_id={target.id}>{target.first_name} {target.last_name or ''}</a>",
+        mention=f"<a href=tg://openmessage?user_id={message.chat.id}>{message.chat.first_name} {message.chat.last_name or ''}</a>",
         id=target.id,
         date=date,
         time=time
